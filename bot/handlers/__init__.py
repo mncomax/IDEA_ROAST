@@ -12,6 +12,8 @@ from telegram.ext import ContextTypes, ConversationHandler
 
 from shared.types import BrainstormState, BrainstormAnswers, ConversationContext
 
+from .history import cmd_history, cmd_learn, save_validation_snapshot_for_idea
+
 logger = logging.getLogger(__name__)
 
 IDEA_FLOW = 0
@@ -34,44 +36,111 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Befehle:\n"
         "/idea — Neue Idee brainstormen\n"
         "/validate — Aktuelle Idee validieren\n"
+        "/simulate — Persona-Simulation starten\n"
         "/history — Alle bisherigen Ideen\n"
         "/profile — Dein Gruender-Profil\n"
+        "/stats — Metriken & Status\n"
         "/help — Alle Befehle\n\n"
         "Starte mit /idea oder schick mir einfach deine Idee als Text oder Sprachnachricht."
     )
 
 
 async def cmd_validate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message:
-        await update.message.reply_text("Validierung kommt in Meilenstein 2. Starte erstmal mit /idea.")
+    if not update.message:
+        return
+    conv_ctx: Optional[ConversationContext] = context.user_data.get("conv_context")
+    if not conv_ctx or not conv_ctx.current_idea_id or not conv_ctx.idea_summary:
+        await update.message.reply_text(
+            "Keine Idee zum Validieren vorhanden. Starte mit /idea."
+        )
+        return
 
+    research_mod = context.bot_data.get("research_module")
+    analysis_mod = context.bot_data.get("analysis_module")
+    report_mod = context.bot_data.get("report_module")
+    repo = context.bot_data.get("repository")
 
-async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message:
-        repo = context.bot_data.get("repository")
-        if not repo:
-            await update.message.reply_text("Datenbank nicht verfuegbar.")
-            return
-        ideas = await repo.get_ideas_by_chat(update.effective_chat.id)
-        if not ideas:
-            await update.message.reply_text("Noch keine Ideen gespeichert. Starte mit /idea!")
-            return
-        lines = ["📋 Deine bisherigen Ideen:\n"]
-        for i, idea in enumerate(ideas, 1):
-            status_icon = {"brainstorm": "🧠", "validated": "✅", "archived": "📦"}.get(idea["status"], "❓")
-            name = idea.get("problem_statement") or idea.get("raw_idea") or "Ohne Titel"
-            lines.append(f"{i}. {status_icon} {name[:60]}")
-        await update.message.reply_text("\n".join(lines))
+    if not research_mod or not analysis_mod or not report_mod:
+        await update.message.reply_text("Module nicht vollstaendig geladen.")
+        return
 
+    chat_id = update.effective_chat.id
+    idea_id = conv_ctx.current_idea_id
+    summary = conv_ctx.idea_summary
 
-async def cmd_learn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message:
-        await update.message.reply_text("Outcome-Tracking kommt in Meilenstein 4.")
+    async def send_progress(msg: str) -> None:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"⏳ {msg}")
+        except Exception:
+            pass
 
+    await update.message.reply_text(
+        "🔍 Starte Validierung — das kann 1-2 Minuten dauern.\n"
+        "Ich halte dich auf dem Laufenden."
+    )
 
-async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message:
-        await update.message.reply_text("Profil-Management kommt in Meilenstein 4.")
+    # Phase 1: Research
+    bundle = await research_mod.run(
+        idea_id=idea_id,
+        summary=summary,
+        progress=send_progress,
+    )
+    conv_ctx.research_bundle = bundle
+
+    # Phase 2: Analysis (Scoring + Devils Advocate + Out-of-Box)
+    analysis = await analysis_mod.run(
+        idea_id=idea_id,
+        summary=summary,
+        research=bundle,
+        progress=send_progress,
+    )
+    conv_ctx.analysis_result = analysis
+
+    # Phase 3: Report
+    await send_progress("Report wird erstellt...")
+
+    from bot.handlers.deep_dive import build_report_keyboard
+
+    report_obj = await report_mod.create_full_report(
+        idea_id=idea_id,
+        summary=summary,
+        research=bundle,
+        analysis=analysis,
+    )
+    context.user_data["last_export_path"] = report_obj.export_file_path
+    context.user_data["last_validation_report"] = report_obj
+
+    telegram_text = await report_mod.generate_telegram_report(
+        summary=summary,
+        research=bundle,
+        analysis=analysis,
+    )
+    await update.message.reply_text(telegram_text, reply_markup=build_report_keyboard())
+
+    if bundle.trend_radar.chart_image_path:
+        try:
+            with open(bundle.trend_radar.chart_image_path, "rb") as f:
+                await context.bot.send_photo(chat_id=chat_id, photo=f)
+        except Exception:
+            logger.warning("Could not send trend chart", exc_info=True)
+
+    # Update idea status in DB
+    if repo:
+        try:
+            await repo.update_idea(idea_id, status="validated")
+        except Exception:
+            logger.warning("Could not update idea status", exc_info=True)
+        await save_validation_snapshot_for_idea(repo, idea_id, analysis)
+
+    profile_mod = context.bot_data.get("profile_module")
+    if profile_mod and conv_ctx.idea_summary:
+        try:
+            uid = update.effective_user.id if update.effective_user else chat_id
+            await profile_mod.update_from_conversation(
+                uid, conv_ctx.idea_summary, conv_ctx.analysis_result
+            )
+        except Exception:
+            logger.warning("Profile update after validation failed", exc_info=True)
 
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -85,10 +154,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "📖 Idea Roast — Befehle\n\n"
             "/idea — Neue Idee brainstormen\n"
             "/validate — Aktuelle Idee validieren lassen\n"
+            "/simulate — Persona-Simulation (nach /validate)\n"
             "/history — Alle bisherigen Ideen und Scores\n"
             "/learn — Outcome einer umgesetzten Idee eintragen\n"
+            "/skip_outcome — Notiz beim Outcome ueberspringen\n"
             "/profile — Dein Gruender-Profil anzeigen/bearbeiten\n"
             "/settings — Research-Quellen konfigurieren\n"
+            "/stats — Bot-Metriken und Systemstatus\n"
             "/cancel — Aktuellen Vorgang abbrechen\n\n"
             "Du kannst auch jederzeit Sprachnachrichten schicken."
         )
@@ -189,9 +261,9 @@ async def _process_brainstorm_input(update: Update, context: ContextTypes.DEFAUL
                 )
                 conv_ctx.current_idea_id = idea_id
             await update.message.reply_text(
-                "Idee gespeichert! ✅\n"
-                "Validierung mit echten Daten kommt in Meilenstein 2.\n"
-                "Nutze /idea fuer eine weitere Idee."
+                "Idee gespeichert! ✅\n\n"
+                "Nutze /validate um die Idee mit echten Daten zu validieren,\n"
+                "oder /idea fuer eine weitere Idee."
             )
             conv_ctx.brainstorm_state = BrainstormState.DONE
             return ConversationHandler.END
@@ -240,7 +312,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     raw = update.message.text or update.message.caption or ""
     if not raw.strip():
         return
+    if context.user_data.get("outcome_notes_pending"):
+        from .history import handle_outcome_notes_message
+
+        await handle_outcome_notes_message(update, context)
+        return
+    if context.user_data.get("awaiting_deep_dive_question"):
+        from .deep_dive import handle_deep_dive_text
+
+        await handle_deep_dive_text(update, context)
+        return
+    if context.user_data.get("awaiting_profile_text"):
+        from .profile import handle_profile_text
+
+        await handle_profile_text(update, context)
+        return
     await dispatch_transcribed_text(update, context, raw.strip())
 
 
+from .profile import cmd_profile  # noqa: E402, F401
 from .voice import handle_voice  # noqa: E402, F401

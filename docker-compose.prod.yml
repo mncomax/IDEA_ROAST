@@ -1,0 +1,80 @@
+# -----------------------------------------------------------------------------
+# Production overrides for Idea Roast (use with: docker compose
+# -f docker-compose.yml -f docker-compose.prod.yml up -d)
+#
+# Targets ~3 vCPU total and bounded RAM for a shared host (e.g. Hetzner CX32).
+# Logging uses json-file rotation to cap disk use.
+#
+# To attach this stack to another Compose project’s network (e.g. AI Fashion Tool),
+# declare that network as external in docker-compose.yml and add it under each
+# service’s networks: — this file does not replace your base network definition.
+# -----------------------------------------------------------------------------
+
+services:
+  bot:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      # Matches Dockerfile: entrypoint touches /tmp/healthy before starting Python.
+      test: ["CMD-SHELL", "test -f /tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  searxng:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  redis:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 192M
+
+  whisper:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.25"
+          memory: 2G
+    healthcheck:
+      # faster-whisper-server: try /health, then OpenAI-compatible /v1/models.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "exec(\"import urllib.request, sys\\nfor p in ['/health','/v1/models']:\\n    try:\\n        urllib.request.urlopen('http://127.0.0.1:8000'+p, timeout=5); sys.exit(0)\\n    except Exception:\\n        pass\\nsys.exit(1)\")",
+        ]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s

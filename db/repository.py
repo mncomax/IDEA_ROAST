@@ -51,6 +51,8 @@ def _json_loads_maybe(raw: str | None, default: Any = None) -> Any:
 
 
 class Repository:
+    VALIDATION_SNAPSHOT_TOOL = "validation_snapshot"
+
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         self._conn: aiosqlite.Connection | None = None
@@ -232,6 +234,40 @@ class Repository:
         d["result_json"] = _json_loads_maybe(d["result_json"], default=None)
         return d
 
+    async def delete_research_cache(self, tool_name: str, query: str) -> None:
+        db = self._require_conn()
+        await db.execute(
+            "DELETE FROM research_cache WHERE tool_name = ? AND query = ?",
+            (tool_name, query),
+        )
+        await db.commit()
+
+    async def get_research_cache_stats(self) -> dict[str, Any]:
+        """Counts all rows and expired rows; sums JSON payload sizes (UTF-8 byte length)."""
+        db = self._require_conn()
+        cur = await db.execute(
+            """
+            SELECT
+              COUNT(*) AS total_entries,
+              SUM(CASE WHEN datetime(expires_at) <= datetime('now') THEN 1 ELSE 0 END) AS expired_entries,
+              COALESCE(SUM(LENGTH(result_json)), 0) AS result_bytes
+            FROM research_cache
+            """
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return {
+                "total_entries": 0,
+                "expired_entries": 0,
+                "result_bytes": 0,
+            }
+        d = dict(row)
+        return {
+            "total_entries": int(d.get("total_entries") or 0),
+            "expired_entries": int(d.get("expired_entries") or 0),
+            "result_bytes": int(d.get("result_bytes") or 0),
+        }
+
     async def save_or_update_profile(self, telegram_id: int, **fields: Any) -> None:
         db = self._require_conn()
         data = {k: v for k, v in fields.items() if k in _PROFILE_COLUMNS}
@@ -293,6 +329,47 @@ class Repository:
         )
         await db.commit()
         return int(cur.lastrowid)
+
+    async def get_outcomes_for_idea(self, idea_id: int) -> list[dict[str, Any]]:
+        db = self._require_conn()
+        cur = await db.execute(
+            """
+            SELECT * FROM idea_outcomes
+            WHERE idea_id = ?
+            ORDER BY recorded_at DESC
+            """,
+            (idea_id,),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def save_validation_snapshot(self, idea_id: int, snapshot: dict[str, Any]) -> int:
+        """Persist scoring + recommendation for history/detail views (research_cache)."""
+        return await self.save_research_cache(
+            idea_id,
+            self.VALIDATION_SNAPSHOT_TOOL,
+            f"idea:{idea_id}",
+            snapshot,
+            ttl_seconds=86400 * 365 * 10,
+        )
+
+    async def get_validation_snapshot(self, idea_id: int) -> dict[str, Any] | None:
+        db = self._require_conn()
+        cur = await db.execute(
+            """
+            SELECT result_json FROM research_cache
+            WHERE idea_id = ?
+              AND tool_name = ?
+              AND datetime(expires_at) > datetime('now')
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (idea_id, self.VALIDATION_SNAPSHOT_TOOL),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return _json_loads_maybe(row["result_json"], default=None)
 
     async def save_trend_data(
         self,

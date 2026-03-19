@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-import sys
 from typing import Any, Awaitable, Callable
 
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -18,6 +18,12 @@ from telegram.ext import (
 
 from bot import handlers
 from bot.config import Settings, load_settings
+from bot.handlers.deep_dive import handle_deep_dive_callback
+from bot.handlers.history import cmd_skip_outcome, get_history_handlers
+from bot.handlers.profile import get_profile_handlers
+from bot.handlers.simulate import cmd_simulate, get_simulate_handlers
+from bot.handlers.stats import cmd_stats
+from shared.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +106,27 @@ def _build_application(settings: Settings) -> Application:
     application.add_handler(idea_conversation)
     application.add_handler(CommandHandler("start", ac(handlers.cmd_start)))
     application.add_handler(CommandHandler("validate", ac(handlers.cmd_validate)))
+    application.add_handler(CommandHandler("simulate", ac(cmd_simulate)))
     application.add_handler(CommandHandler("history", ac(handlers.cmd_history)))
     application.add_handler(CommandHandler("learn", ac(handlers.cmd_learn)))
+    application.add_handler(CommandHandler("skip_outcome", ac(cmd_skip_outcome)))
     application.add_handler(CommandHandler("profile", ac(handlers.cmd_profile)))
     application.add_handler(CommandHandler("settings", ac(handlers.cmd_settings)))
+    application.add_handler(CommandHandler("stats", ac(cmd_stats)))
     application.add_handler(CommandHandler("help", ac(handlers.cmd_help)))
+
+    application.add_handler(
+        CallbackQueryHandler(ac(handle_deep_dive_callback), pattern=r"^deep_")
+    )
+
+    for h in get_profile_handlers(ac):
+        application.add_handler(h)
+
+    for h in get_history_handlers(ac):
+        application.add_handler(h)
+
+    for h in get_simulate_handlers(ac):
+        application.add_handler(h)
 
     # 2) Voice
     application.add_handler(MessageHandler(filters.VOICE, ac(handlers.handle_voice)))
@@ -119,13 +141,24 @@ def _build_application(settings: Settings) -> Application:
 
 
 async def post_init(application: Application) -> None:
-    """Initialize DB, repository, and modules after bot startup."""
+    """Initialize DB, repository, tool clients, and modules after bot startup."""
     settings: Settings = application.bot_data["settings"]
 
     from db.models import init_db
     from db.repository import Repository
     from llm.client import LLMClient
+    from modules.analysis import AnalysisModule
     from modules.brainstorm import BrainstormModule
+    from modules.profile import ProfileModule
+    from modules.report import ReportModule
+    from modules.research import ResearchModule
+    from modules.simulate import SimulationModule
+    from tools.github_search import GitHubSearchClient
+    from tools.hackernews import HackerNewsClient
+    from tools.producthunt import ProductHuntClient
+    from tools.reddit import RedditClient
+    from tools.searxng import SearXNGClient
+    from tools.trend_radar import TrendRadar
 
     await init_db(settings.database_path)
     repo = Repository(settings.database_path)
@@ -137,26 +170,62 @@ async def post_init(application: Application) -> None:
     )
     brainstorm = BrainstormModule(llm_client=llm_client)
 
+    searxng = SearXNGClient(base_url=settings.searxng_base_url)
+    reddit = RedditClient(
+        client_id=settings.reddit_client_id or "",
+        client_secret=settings.reddit_client_secret or "",
+        user_agent=settings.reddit_user_agent or "IdeaRoast/1.0",
+    )
+    hackernews = HackerNewsClient()
+    github = GitHubSearchClient(token=settings.github_token)
+    producthunt = ProductHuntClient(searxng_base_url=settings.searxng_base_url)
+    trend_radar = TrendRadar(llm_client=llm_client)
+
+    research = ResearchModule(
+        searxng=searxng,
+        reddit=reddit,
+        hackernews=hackernews,
+        github=github,
+        producthunt=producthunt,
+        trend_radar=trend_radar,
+        llm=llm_client,
+        repo=repo,
+    )
+
+    analysis = AnalysisModule(llm=llm_client)
+    report = ReportModule(llm=llm_client)
+    profile = ProfileModule(llm=llm_client, repo=repo)
+    simulation = SimulationModule(llm_client=llm_client)
+
     application.bot_data["repository"] = repo
     application.bot_data["llm_client"] = llm_client
     application.bot_data["brainstorm_module"] = brainstorm
-    logger.info("DB initialized, modules loaded")
+    application.bot_data["research_module"] = research
+    application.bot_data["analysis_module"] = analysis
+    application.bot_data["report_module"] = report
+    application.bot_data["profile_module"] = profile
+    application.bot_data["simulation_module"] = simulation
+    application.bot_data["_tool_clients"] = [
+        searxng, reddit, hackernews, github, producthunt, trend_radar,
+    ]
+    logger.info("DB initialized, all modules + tool clients loaded")
 
 
 async def post_shutdown(application: Application) -> None:
+    for client in application.bot_data.get("_tool_clients", []):
+        try:
+            await client.close()
+        except Exception:
+            logger.debug("Error closing tool client", exc_info=True)
     repo = application.bot_data.get("repository")
     if repo:
         await repo.close()
-    logger.info("Repository closed")
+    logger.info("Repository + tool clients closed")
 
 
 def main() -> None:
     settings = load_settings()
-    logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        stream=sys.stdout,
-    )
+    setup_logging(settings.log_level)
 
     application = _build_application(settings)
     application.bot_data["settings"] = settings

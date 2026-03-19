@@ -1,0 +1,47 @@
+# -----------------------------------------------------------------------------
+# Docker build context exclusions — keeps images smaller and avoids leaking
+# secrets or copying host-only data. (.env is provided at runtime via Compose.)
+# -----------------------------------------------------------------------------
+
+# VCS & editor
+.git
+.gitignore
+.cursor
+.codex
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Secrets & local env (injected at runtime)
+.env
+.env.*
+!.env.example
+
+# Runtime data (mounted as volumes in Compose)
+data
+backups
+
+# Agent / IDE artifacts
+agent-transcripts
+
+# Docs (not needed inside the image)
+*.md
+**/*.md
+
+# Tests
+tests
+**/tests
+pytest.ini
+.pytest_cache
+.coverage
+htmlcov
+
+# Misc
+*.log
+.DS_Store

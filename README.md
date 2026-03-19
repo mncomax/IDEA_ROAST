@@ -4,13 +4,19 @@ Telegram-basierter AI-Sparringspartner zur systematischen Validierung von Gescha
 
 ## Features
 
-- **Sokratisches Brainstorming** — 6 gezielte Fragen schaerfen jede Idee
+- **Sokratisches Brainstorming** — Adaptive Fragen schaerfen jede Idee
 - **Voice Support** — Sprachnachrichten werden self-hosted transkribiert (faster-whisper)
-- **Multi-Source Research** — SearXNG, Reddit, HN, GitHub, ProductHunt (kommt in M2)
-- **Trend-Radar** — Multi-Signal Trend-Analyse mit Chart (kommt in M2)
-- **Qualitatives Scoring** — Keine Scheinpraezision, klare Empfehlungen (kommt in M3)
-- **Devils Advocate** — Aktiver Versuch die Idee zu killen (kommt in M3)
+- **Multi-Source Research** — SearXNG, Reddit, HN, GitHub, ProductHunt parallel
+- **Trend-Radar** — Multi-Signal Trend-Analyse mit Chart-Generierung
+- **7-Kategorien Scoring** — Qualitative Bewertung mit klaren Empfehlungen
+- **Devils Advocate** — Aktiver Versuch die Idee zu killen + billigster Validierungstest
+- **Out-of-the-Box Ideen** — Kreative Pivots und unerwartete Perspektiven
+- **Persona-Simulation** — KI-generierte Kundenreaktionen als Denkanstoesse
+- **Report-Export** — Telegram-Nachricht + Markdown-Datei zum Download
 - **Quellenangaben** — Jede Faktenaussage mit Quelle, nie KI-Erfindungen
+- **User Profile** — Lernt ueber Zeit Staerken, Branchen, Praeferenzen
+- **Ideen-History** — Outcome-Tracking, Muster-Erkennung ueber alle Ideen
+- **Research Cache** — TTL-basiertes Caching, spart API-Aufrufe bei Re-Validierung
 
 ## Quick Start (Lokal)
 
@@ -23,8 +29,11 @@ cd idea-roast
 cp .env.example .env
 # -> Telegram Bot Token und Anthropic API Key eintragen
 
-# 3. Docker Compose starten
+# 3. Docker Compose starten (Development)
 docker compose up -d
+
+# 3b. Production (mit Ressource-Limits)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # 4. Logs pruefen
 docker compose logs -f bot
@@ -44,12 +53,13 @@ python -m bot.main
 ## Projektstruktur
 
 ```
-bot/            # Telegram Handler (Zone A)
-modules/        # Business Logic (Zone B)
-tools/          # Externe API Clients (Zone C)
-llm/            # Claude API + Prompts (Zone D)
+bot/            # Telegram Handler + Commands (Zone A)
+modules/        # Business Logic — Brainstorm, Research, Analysis, Report, Simulate (Zone B)
+tools/          # Externe API Clients — SearXNG, Reddit, HN, GitHub, ProductHunt (Zone C)
+llm/            # LLM Client + Prompts — Claude + GPT Routing (Zone D)
 db/             # SQLite Schema + Repository (Zone E)
-shared/         # Typen, Konstanten, Exceptions (Shared Contracts)
+shared/         # Typen, Konstanten, Exceptions, Logging, Monitoring (Shared Contracts)
+scripts/        # Deploy, Backup, Cron-Setup
 ```
 
 ## Fortschritt

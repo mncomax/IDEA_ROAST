@@ -1,6 +1,6 @@
 # Idea Roast — Globaler Fortschrittsplan
 
-Letzte Aktualisierung: 2026-03-19
+Letzte Aktualisierung: 2026-03-19 (Meilensteine 1-6 abgeschlossen)
 
 ---
 
@@ -19,6 +19,7 @@ Letzte Aktualisierung: 2026-03-19
 | ✅ | Brainstorm Modul | Stark | Sokratische Fragen, Zusammenfassung |
 | ✅ | Handler-Verdrahtung | Stark | /idea Flow komplett mit DB-Speicherung |
 | ✅ | Git Init + Erster Push | Schnell | .gitignore, README, PLAN.md |
+| ✅ | Multi-Provider LLM | Schnell | Claude + GPT Routing, Fallback |
 
 ---
 
@@ -26,15 +27,15 @@ Letzte Aktualisierung: 2026-03-19
 
 | Status | Task | Cursor-Modell | Details |
 |--------|------|---------------|---------|
-| ⬜ | SearXNG Client | Schnell | Tavily-kompatibler async Client |
-| ⬜ | Reddit API Client | Schnell | Async, Source-Tracking, Zeitfenster |
-| ⬜ | HN Algolia Client | Schnell | Async, Date-Range Queries |
-| ⬜ | GitHub Search Client | Schnell | Async, Star/Repo-Analyse |
-| ⬜ | ProductHunt Client | Schnell | GraphQL, Launch-Daten |
-| ⬜ | Trend-Radar Tool | Stark | pytrends + Multi-Signal + Chart |
-| ⬜ | Research Modul | Stark | Parallele Ausfuehrung, 3-Tier Fallback |
-| ⬜ | Quellen-System | Schnell | Citations in DB, Inline-Quellen |
-| ⬜ | Fortschritts-Updates | Schnell | Echtzeit-Feedback via Telegram |
+| ✅ | SearXNG Client | Schnell | Async Client, JSON API, News + Academic |
+| ✅ | Reddit API Client | Schnell | OAuth2, Subreddit-Search, Source-Tracking |
+| ✅ | HN Algolia Client | Schnell | Stories + Comments, Date-Range, Points-Sortierung |
+| ✅ | GitHub Search Client | Schnell | Repos + Topics, Rate-Limit Handling |
+| ✅ | ProductHunt Client | Schnell | GraphQL + SearXNG Fallback |
+| ✅ | Trend-Radar Tool | Stark | pytrends + Reddit/HN/News/GitHub Signale + Chart |
+| ✅ | Research Modul | Stark | Parallele Ausfuehrung, 3-Tier Fallback, LLM Queries |
+| ✅ | Quellen-System | Schnell | Citations in DB via Repository, Source-Tracking |
+| ✅ | Fortschritts-Updates | Schnell | Echtzeit-Feedback via Telegram ProgressCallback |
 
 ---
 
@@ -42,11 +43,11 @@ Letzte Aktualisierung: 2026-03-19
 
 | Status | Task | Cursor-Modell | Details |
 |--------|------|---------------|---------|
-| ⬜ | Analyse Modul | Stark | 7-Kategorien Scoring, Business-Logik |
-| ⬜ | Out-of-the-Box Prompts | Stark | Querdenker-Phase |
-| ⬜ | Report Modul | Stark/Schnell | Telegram-Format + .md Export |
-| ⬜ | Devils Advocate | Stark | Kill-the-idea Phase |
-| ⬜ | Deep Dive Handler | Schnell | Inline-Buttons, Quellen-Nachfrage |
+| ✅ | Analyse Modul | Stark | 7-Kategorien Scoring via LLM, Parsing, Fallbacks |
+| ✅ | Out-of-the-Box Prompts | Stark | Kreative Pivots, parallel mit Devils Advocate |
+| ✅ | Report Modul | Stark/Schnell | Template-Telegram + .md Export mit Quellenanhang |
+| ✅ | Devils Advocate | Stark | Kill-Argument, riskanteste Annahme, billigster Test |
+| ✅ | Deep Dive Handler | Schnell | Inline-Buttons, Quellen, Trend-Details, Folgefragen |
 
 ---
 
@@ -54,10 +55,10 @@ Letzte Aktualisierung: 2026-03-19
 
 | Status | Task | Cursor-Modell | Details |
 |--------|------|---------------|---------|
-| ⬜ | User Profile | Stark | Lernt ueber Zeit |
-| ⬜ | Ideen-History | Schnell | Outcome-Tracking |
-| ⬜ | Research Cache | Schnell | TTL-basiert |
-| ⬜ | Pattern Recognition | Stark | Muster ueber Ideen erkennen |
+| ✅ | User Profile | Stark | /profile, interaktive Bearbeitung, auto-Lernen aus Ideen |
+| ✅ | Ideen-History | Schnell | /history mit Details, /learn Outcome-Tracking, Snapshots |
+| ✅ | Research Cache | Schnell | CacheManager, TTL-basiert, Cache-Stats, in Research integriert |
+| ✅ | Pattern Recognition | Stark | Muster ueber Ideen, Vergleich, Themen/Staerken/Blind-Spots |
 
 ---
 
@@ -65,9 +66,9 @@ Letzte Aktualisierung: 2026-03-19
 
 | Status | Task | Cursor-Modell | Details |
 |--------|------|---------------|---------|
-| ⬜ | MiroFish Docker Deploy | Stark | Self-hosted auf Hetzner |
-| ⬜ | /simulate Kommando | Stark | Persona-Konfig aus Validierung |
-| ⬜ | Disclaimer-System | Schnell | Klare Kennzeichnung |
+| ✅ | MiroFish Simulation Module | Stark | Persona-Generierung + Reaktionen, asyncio.gather |
+| ✅ | /simulate Kommando | Stark | Handler, Retry, Summary, Inline-Buttons |
+| ✅ | Disclaimer-System | Schnell | Vorab-Hinweis + Block am Ende jeder Simulation |
 
 ---
 
@@ -75,10 +76,10 @@ Letzte Aktualisierung: 2026-03-19
 
 | Status | Task | Cursor-Modell | Details |
 |--------|------|---------------|---------|
-| ⬜ | Hetzner CX22 -> CX32 | Schnell | Server-Upgrade |
-| ⬜ | Production Deploy | Schnell | Docker Compose, separates Netzwerk |
-| ⬜ | Backup-Automation | Schnell | SQLite + Volumes |
-| ⬜ | Monitoring | Schnell | Error Handling, Logging |
+| ⬜ | Hetzner CX22 -> CX32 | Schnell | Server-Upgrade (manuell) |
+| ✅ | Production Deploy | Schnell | docker-compose.prod.yml, Ressource-Limits, deploy.sh |
+| ✅ | Backup-Automation | Schnell | backup.sh + cron-setup, Rotation daily/weekly |
+| ✅ | Monitoring | Schnell | RotatingFileHandler, BotMetrics, /stats Command |
 
 ---
 
