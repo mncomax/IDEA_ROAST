@@ -131,7 +131,10 @@ async def post_init(application: Application) -> None:
     repo = Repository(settings.database_path)
     await repo.connect()
 
-    llm_client = LLMClient(api_key=settings.anthropic_api_key)
+    llm_client = LLMClient(
+        anthropic_api_key=settings.anthropic_api_key,
+        openai_api_key=settings.openai_api_key,
+    )
     brainstorm = BrainstormModule(llm_client=llm_client)
 
     application.bot_data["repository"] = repo

@@ -69,10 +69,9 @@ RESEARCH_CACHE_TTL = 7 * 24 * 60 * 60
 # Trend analysis time range
 TREND_LOOKBACK_QUARTERS = 8  # 2 years
 
-# LLM model routing
-LLM_MODEL_FAST = "claude-sonnet-4-20250514"
-LLM_MODEL_DEEP = "claude-sonnet-4-20250514"
-LLM_MODEL_DEVILS_ADVOCATE = "claude-sonnet-4-20250514"
+# LLM task routing is defined in llm/client.py TASK_ROUTING
+# Claude: devils_advocate, analysis, out_of_box (quality-critical)
+# GPT:    brainstorm, summarize, report_format, source_query, research_extract (cost-efficient)
 
 # Progress update messages
 PROGRESS_MESSAGES = {

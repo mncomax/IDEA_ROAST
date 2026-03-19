@@ -102,6 +102,7 @@ class BrainstormModule:
         bot_response = await self._llm.complete(
             system_prompt=BRAINSTORM_SYSTEM_PROMPT,
             user_message=user_prompt,
+            task="brainstorm",
         )
         return bot_response, new_state
 
@@ -118,6 +119,7 @@ class BrainstormModule:
         data = await self._llm.complete_structured(
             system_prompt=SUMMARIZE_SYSTEM_PROMPT,
             user_message=user_prompt,
+            task="summarize",
         )
 
         return IdeaSummary(
@@ -144,4 +146,5 @@ class BrainstormModule:
         return await self._llm.complete(
             system_prompt=BRAINSTORM_SYSTEM_PROMPT,
             user_message=user_prompt,
+            task="brainstorm",
         )

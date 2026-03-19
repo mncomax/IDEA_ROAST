@@ -23,7 +23,8 @@ def _parse_allowed_user_ids(raw: str | None) -> list[int]:
 @dataclass(frozen=True)
 class Settings:
     telegram_bot_token: str
-    anthropic_api_key: str
+    anthropic_api_key: str | None
+    openai_api_key: str | None
     reddit_client_id: str | None
     reddit_client_secret: str | None
     reddit_user_agent: str | None
@@ -40,19 +41,22 @@ def load_settings() -> Settings:
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
-        msg = "TELEGRAM_BOT_TOKEN is required"
-        raise ValueError(msg)
+        raise ValueError("TELEGRAM_BOT_TOKEN is required")
 
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not anthropic_key:
-        msg = "ANTHROPIC_API_KEY is required"
-        raise ValueError(msg)
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY") or None
+    openai_key = os.environ.get("OPENAI_API_KEY") or None
+
+    if not anthropic_key and not openai_key:
+        raise ValueError(
+            "Mindestens ANTHROPIC_API_KEY oder OPENAI_API_KEY muss gesetzt sein"
+        )
 
     allowed_raw = os.environ.get("ALLOWED_USER_IDS", "")
 
     return Settings(
         telegram_bot_token=token,
         anthropic_api_key=anthropic_key,
+        openai_api_key=openai_key,
         reddit_client_id=os.environ.get("REDDIT_CLIENT_ID") or None,
         reddit_client_secret=os.environ.get("REDDIT_CLIENT_SECRET") or None,
         reddit_user_agent=os.environ.get("REDDIT_USER_AGENT") or None,
