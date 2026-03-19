@@ -1,0 +1,74 @@
+services:
+  bot:
+    build: .
+    container_name: idearoast-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - bot-data:/app/data
+      - bot-backups:/app/backups
+    depends_on:
+      searxng:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      whisper:
+        condition: service_started
+    networks:
+      - idearoast-net
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: idearoast-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8099:8080"
+    volumes:
+      - ./searxng-settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8099/
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - idearoast-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: idearoast-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - idearoast-net
+
+  whisper:
+    image: fedirz/faster-whisper-server:latest
+    container_name: idearoast-whisper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8000"
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-medium
+      - WHISPER__DEVICE=cpu
+      - WHISPER__COMPUTE_TYPE=int8
+    volumes:
+      - whisper-models:/root/.cache/huggingface
+    networks:
+      - idearoast-net
+
+volumes:
+  bot-data:
+  bot-backups:
+  whisper-models:
+
+networks:
+  idearoast-net:
+    name: idearoast-net
+    driver: bridge

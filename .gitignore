@@ -1,0 +1,54 @@
+# Environment & Secrets
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+
+# Database
+*.db
+*.sqlite3
+
+# Backups
+backups/
+
+# Docker Volumes
+volumes/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Whisper model cache
+whisper_models/
+
+# Matplotlib cache
+.matplotlib/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
