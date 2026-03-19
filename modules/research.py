@@ -464,7 +464,7 @@ class ResearchModule:
             self._cached_search(
                 "github",
                 competitor_q,
-                self._github.search(competitor_q),
+                self._github.search_repos(competitor_q),
                 idea_id,
             ),
             self._cached_search(
