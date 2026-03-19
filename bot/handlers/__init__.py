@@ -31,17 +31,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text(
         "Willkommen bei Idea Roast! 🔥\n\n"
-        "Ich bin dein kritischer Co-Founder. Ich helfe dir, Geschaeftsideen "
-        "zu schaerfen und knallhart zu validieren.\n\n"
-        "Befehle:\n"
-        "/idea — Neue Idee brainstormen\n"
-        "/validate — Aktuelle Idee validieren\n"
-        "/simulate — Persona-Simulation starten\n"
-        "/history — Alle bisherigen Ideen\n"
-        "/profile — Dein Gruender-Profil\n"
-        "/stats — Metriken & Status\n"
-        "/help — Alle Befehle\n\n"
-        "Starte mit /idea oder schick mir einfach deine Idee als Text oder Sprachnachricht."
+        "Ich bin dein kritischer Co-Founder — ich helfe dir, "
+        "Geschaeftsideen zu schaerfen und knallhart zu validieren.\n\n"
+        "/idea — Beschreib deine Idee, ich stelle gezielte Fragen\n"
+        "/validate — Validierung mit echten Daten aus 8+ Quellen\n"
+        "/simulate — Simulierte Personas reagieren auf deine Idee\n"
+        "/history — Alle bisherigen Ideen mit Bewertungen\n"
+        "/profile — Dein Gruender-Profil (lernt mit der Zeit)\n"
+        "/stats — Bot-Status und Nutzungsstatistiken\n"
+        "/help — Alle Befehle im Detail\n\n"
+        "Leg los mit /idea oder schick mir direkt deine Idee."
     )
 
 
@@ -212,34 +211,9 @@ async def _process_brainstorm_input(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("Bot nicht vollstaendig initialisiert. Bitte spaeter erneut versuchen.")
         return ConversationHandler.END
 
-    bot_response, new_state = await brainstorm.process_message(conv_ctx, text)
-    conv_ctx.brainstorm_state = new_state
-
-    if new_state == BrainstormState.SUMMARIZING:
-        await update.message.reply_text(bot_response)
-        summary = await brainstorm.generate_summary(conv_ctx)
-        conv_ctx.idea_summary = summary
-
-        summary_text = (
-            "📋 IDEEN-ZUSAMMENFASSUNG\n\n"
-            f"Problem: {summary.problem_statement}\n"
-            f"Zielgruppe: {summary.target_audience}\n"
-            f"Loesung: {summary.solution}\n"
-            f"Monetarisierung: {summary.monetization}\n"
-            f"Distribution: {summary.distribution_channel}\n"
-            f"Dein Vorteil: {summary.unfair_advantage}\n\n"
-            "Stimmt das so? Soll ich die Idee validieren? (Ja/Nein)"
-        )
-        await update.message.reply_text(summary_text)
-        conv_ctx.brainstorm_state = BrainstormState.AWAITING_CONFIRMATION
-        return IDEA_FLOW
-
-    if new_state == BrainstormState.AWAITING_CONFIRMATION:
-        return IDEA_FLOW
-
     if conv_ctx.brainstorm_state == BrainstormState.AWAITING_CONFIRMATION:
         lower = text.lower().strip()
-        if lower in ("ja", "yes", "jo", "klar", "los", "validieren", "ja!"):
+        if lower in ("ja", "yes", "jo", "klar", "los", "validieren", "ja!", "jap", "yep", "sure", "ok", "okay"):
             if repo and conv_ctx.idea_summary:
                 idea_id = await repo.create_idea(
                     conv_ctx.telegram_chat_id,
@@ -267,7 +241,8 @@ async def _process_brainstorm_input(update: Update, context: ContextTypes.DEFAUL
             )
             conv_ctx.brainstorm_state = BrainstormState.DONE
             return ConversationHandler.END
-        elif lower in ("nein", "no", "ne", "nee", "nicht"):
+        elif lower in ("nein", "no", "ne", "nee", "nicht", "nope"):
+            conv_ctx.brainstorm_state = BrainstormState.IN_PROGRESS
             await update.message.reply_text(
                 "Okay, was soll ich aendern? Beschreib kurz was anders ist, "
                 "dann passe ich die Zusammenfassung an."
@@ -276,6 +251,28 @@ async def _process_brainstorm_input(update: Update, context: ContextTypes.DEFAUL
         else:
             await update.message.reply_text("Kurz Ja oder Nein — stimmt die Zusammenfassung?")
             return IDEA_FLOW
+
+    bot_response, new_state = await brainstorm.process_message(conv_ctx, text)
+    conv_ctx.brainstorm_state = new_state
+
+    if new_state == BrainstormState.SUMMARIZING:
+        await update.message.reply_text(bot_response)
+        summary = await brainstorm.generate_summary(conv_ctx)
+        conv_ctx.idea_summary = summary
+
+        summary_text = (
+            "📋 IDEEN-ZUSAMMENFASSUNG\n\n"
+            f"Problem: {summary.problem_statement}\n"
+            f"Zielgruppe: {summary.target_audience}\n"
+            f"Loesung: {summary.solution}\n"
+            f"Monetarisierung: {summary.monetization}\n"
+            f"Distribution: {summary.distribution_channel}\n"
+            f"Dein Vorteil: {summary.unfair_advantage}\n\n"
+            "Stimmt das so? Soll ich die Idee validieren? (Ja/Nein)"
+        )
+        await update.message.reply_text(summary_text)
+        conv_ctx.brainstorm_state = BrainstormState.AWAITING_CONFIRMATION
+        return IDEA_FLOW
 
     await update.message.reply_text(bot_response)
     return IDEA_FLOW
