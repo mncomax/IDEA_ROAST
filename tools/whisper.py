@@ -12,7 +12,7 @@ from aiohttp import ClientTimeout
 
 from shared.exceptions import VoiceTranscriptionError
 
-DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-medium"
+DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small"
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 
 
@@ -31,7 +31,7 @@ class WhisperClient:
 
     async def transcribe(self, audio_bytes: bytes, filename: str = "voice.wav") -> str:
         url = f"{self._base_url}{TRANSCRIPTIONS_PATH}"
-        timeout = ClientTimeout(total=30)
+        timeout = ClientTimeout(total=120)
 
         form = aiohttp.FormData()
         form.add_field(
@@ -51,7 +51,7 @@ class WhisperClient:
                     status = resp.status
         except asyncio.TimeoutError as exc:
             raise VoiceTranscriptionError(
-                "Whisper-Anfrage hat das Zeitlimit (30s) ueberschritten."
+                "Whisper-Anfrage hat das Zeitlimit (120s) ueberschritten."
             ) from exc
         except aiohttp.ClientError as exc:
             raise VoiceTranscriptionError(

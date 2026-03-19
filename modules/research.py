@@ -38,13 +38,6 @@ from tools.trend_radar import TrendRadar
 
 logger = logging.getLogger(__name__)
 
-# Default English-language subreddits for B2B / founder discussion context
-DEFAULT_BUSINESS_SUBREDDITS = [
-    "entrepreneur",
-    "startups",
-    "smallbusiness",
-    "SaaS",
-]
 
 RESEARCH_QUERIES_SYSTEM_PROMPT = """
 You turn a structured business idea summary into effective web-research inputs.
@@ -53,11 +46,13 @@ Return a single JSON object with exactly these keys:
 - competitor_query: one English search string about existing solutions, competitors, and alternatives.
 - sentiment_query: one English search string about discussions, opinions, pain, and reviews around this problem.
 - trend_keywords: an array of 2-3 short English keywords or short phrases for multi-quarter trend analysis.
+- reddit_subreddits: an array of 6-10 subreddit names (WITHOUT "r/" prefix) that are most relevant for this specific idea. Pick communities where this idea's target audience hangs out, where the problem is discussed, and where competitors/alternatives are talked about. Mix large popular subs with smaller niche ones. Examples: for a gaming idea → ["gaming", "indiegaming", "Steam", "gamedev", "pcgaming", "Games"]. For a B2B SaaS → ["SaaS", "startups", "Entrepreneur", "smallbusiness", "marketing", "sales"].
 
 Rules:
 - Be specific to the idea; avoid generic fluff.
 - Prefer English queries — retrieval quality is usually better than German for these APIs.
 - trend_keywords must be distinct facets (e.g. product category + core problem term).
+- reddit_subreddits MUST contain at least 6 entries, tailored to the idea's domain.
 """.strip()
 
 
@@ -68,7 +63,8 @@ def _display_name_for_tool(tool_name: str) -> str:
         "searxng_market_news": "SearXNG (News)",
         "searxng_academic": "SearXNG (Wissenschaft)",
         "searxng_fallback": "SearXNG (Fallback)",
-        "reddit": "Reddit",
+        "reddit": "Reddit (Subreddits)",
+        "reddit_global": "Reddit (Global)",
         "hackernews": "Hacker News",
         "hackernews_comments": "Hacker News (Kommentare)",
         "github": "GitHub",
@@ -94,6 +90,11 @@ def _research_result_to_cache_payload(result: ResearchResult) -> dict[str, Any]:
     return _sanitize_for_json(asdict(result))
 
 
+FALLBACK_SUBREDDITS = [
+    "startups", "Entrepreneur", "smallbusiness", "SaaS", "business", "marketing",
+]
+
+
 def _fallback_queries(summary: IdeaSummary) -> dict[str, str | list[str]]:
     base = (summary.problem_statement or summary.solution or "startup idea").strip()
     sol = (summary.solution or "product").strip()
@@ -102,6 +103,7 @@ def _fallback_queries(summary: IdeaSummary) -> dict[str, str | list[str]]:
         "competitor_query": f"{sol} competitors alternatives",
         "sentiment_query": f"{base} discussion reviews frustration",
         "trend_keywords": [w for w in [sol.split()[0] if sol else "", "b2b", "saas"] if w][:3],
+        "reddit_subreddits": list(FALLBACK_SUBREDDITS),
     }
 
 
@@ -215,11 +217,26 @@ class ResearchModule:
                     if len(keywords) >= 3:
                         break
 
+        raw_subs = data.get("reddit_subreddits")
+        subreddits: list[str]
+        if isinstance(raw_subs, list) and len(raw_subs) >= 3:
+            subreddits = [str(s).strip().strip("/").replace("r/", "") for s in raw_subs if str(s).strip()][:10]
+        else:
+            subreddits = list(FALLBACK_SUBREDDITS)
+
+        if len(subreddits) < 6:
+            for fb in FALLBACK_SUBREDDITS:
+                if fb not in subreddits:
+                    subreddits.append(fb)
+                if len(subreddits) >= 6:
+                    break
+
         return {
             "market_query": market.strip(),
             "competitor_query": competitor.strip(),
             "sentiment_query": sentiment.strip(),
             "trend_keywords": keywords[:3],
+            "reddit_subreddits": subreddits,
         }
 
     async def _safe_search(self, coro: Any, tool_name: str) -> ResearchResult:
@@ -426,13 +443,17 @@ class ResearchModule:
         else:
             trend_kw_list = list(trend_keywords)
 
+        raw_subs = queries.get("reddit_subreddits")
+        reddit_subs: list[str] = list(raw_subs) if isinstance(raw_subs, list) else list(FALLBACK_SUBREDDITS)
+
         logger.info(
-            "Research run idea_id=%s market_q=%r competitor_q=%r sentiment_q=%r keywords=%s",
+            "Research run idea_id=%s market_q=%r competitor_q=%r sentiment_q=%r keywords=%s subreddits=%s",
             idea_id,
             market_q,
             competitor_q,
             sentiment_q,
             trend_kw_list,
+            reddit_subs,
         )
 
         # --- Phase 1a: market ---
@@ -478,12 +499,20 @@ class ResearchModule:
         phase1: list[ResearchResult] = list(phase1_market) + list(phase1_comp)
 
         # --- Phase 2: sentiment ---
-        await self._notify(progress, "sentiment_search")
+        subs_display = ", ".join(f"r/{s}" for s in reddit_subs[:6])
+        if progress:
+            await progress(f"Durchsuche Reddit ({subs_display}) + global...")
         phase2 = await asyncio.gather(
             self._cached_search(
                 "reddit",
                 sentiment_q,
-                self._reddit.search(sentiment_q, subreddits=DEFAULT_BUSINESS_SUBREDDITS),
+                self._reddit.search(sentiment_q, subreddits=reddit_subs),
+                idea_id,
+            ),
+            self._cached_search(
+                "reddit_global",
+                sentiment_q,
+                self._reddit.search(sentiment_q, subreddits=None),
                 idea_id,
             ),
             self._cached_search(

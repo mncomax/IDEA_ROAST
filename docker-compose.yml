@@ -49,17 +49,23 @@ services:
       - idearoast-net
 
   whisper:
-    image: fedirz/faster-whisper-server:latest
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
     container_name: idearoast-whisper
     restart: unless-stopped
     ports:
       - "127.0.0.1:8100:8000"
     environment:
-      - WHISPER__MODEL=Systran/faster-whisper-medium
-      - WHISPER__DEVICE=cpu
+      - WHISPER__MODEL=Systran/faster-whisper-small
+      - WHISPER__INFERENCE_DEVICE=cpu
       - WHISPER__COMPUTE_TYPE=int8
     volumes:
-      - whisper-models:/root/.cache/huggingface
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     networks:
       - idearoast-net
 
