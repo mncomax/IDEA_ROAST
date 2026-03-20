@@ -42,15 +42,19 @@ logger = logging.getLogger(__name__)
 RESEARCH_QUERIES_SYSTEM_PROMPT = """
 You turn a structured business idea summary into effective web-research inputs.
 Return a single JSON object with exactly these keys:
-- market_query: one concise English web search string about the problem, market size, and demand.
-- competitor_query: one English search string about existing solutions, competitors, and alternatives.
-- sentiment_query: one English search string about discussions, opinions, pain, and reviews around this problem.
+- market_query_en: one concise ENGLISH web search string about the problem, market size, and demand.
+- market_query_de: the same search intent but in GERMAN, using German-specific terms and phrasing.
+- competitor_query_en: one ENGLISH search string about existing solutions, competitors, and alternatives.
+- competitor_query_de: same in GERMAN.
+- sentiment_query: one ENGLISH search string about discussions, opinions, pain, and reviews around this problem.
+- direct_search: a very specific search string that targets the EXACT product/concept described (e.g. if the idea is "AI dog trainer app" then search "AI dog training app" or "KI Hundetrainer App"). This should find articles, products, or discussions about this exact thing or very close alternatives.
 - trend_keywords: an array of 2-3 short English keywords or short phrases for multi-quarter trend analysis.
-- reddit_subreddits: an array of 6-10 subreddit names (WITHOUT "r/" prefix) that are most relevant for this specific idea. Pick communities where this idea's target audience hangs out, where the problem is discussed, and where competitors/alternatives are talked about. Mix large popular subs with smaller niche ones. Examples: for a gaming idea → ["gaming", "indiegaming", "Steam", "gamedev", "pcgaming", "Games"]. For a B2B SaaS → ["SaaS", "startups", "Entrepreneur", "smallbusiness", "marketing", "sales"].
+- reddit_subreddits: an array of 6-10 subreddit names (WITHOUT "r/" prefix) that are most relevant for this specific idea. Pick communities where this idea's target audience hangs out, where the problem is discussed, and where competitors/alternatives are talked about. Mix large popular subs with smaller niche ones.
 
 Rules:
 - Be specific to the idea; avoid generic fluff.
-- Prefer English queries — retrieval quality is usually better than German for these APIs.
+- English queries usually have better retrieval — but German queries catch German-language articles, forums, and news that English misses. ALWAYS provide both.
+- direct_search should be the most literal, specific search possible for this exact idea.
 - trend_keywords must be distinct facets (e.g. product category + core problem term).
 - reddit_subreddits MUST contain at least 6 entries, tailored to the idea's domain.
 """.strip()
@@ -59,9 +63,12 @@ Rules:
 def _display_name_for_tool(tool_name: str) -> str:
     mapping: dict[str, str] = {
         "searxng": "SearXNG",
-        "searxng_market_general": "SearXNG (Markt)",
+        "searxng_market_general": "SearXNG (Markt EN)",
+        "searxng_market_de": "SearXNG (Markt DE)",
         "searxng_market_news": "SearXNG (News)",
         "searxng_academic": "SearXNG (Wissenschaft)",
+        "searxng_competitor_de": "SearXNG (Wettbewerber DE)",
+        "searxng_direct": "SearXNG (Direktsuche)",
         "searxng_fallback": "SearXNG (Fallback)",
         "reddit": "Reddit (Subreddits)",
         "reddit_global": "Reddit (Global)",
@@ -100,9 +107,12 @@ def _fallback_queries(summary: IdeaSummary) -> dict[str, str | list[str]]:
     base = (summary.problem_statement or summary.solution or "startup idea").strip()
     sol = (summary.solution or "product").strip()
     return {
-        "market_query": f"{base} market demand TAM",
-        "competitor_query": f"{sol} competitors alternatives",
+        "market_query_en": f"{base} market demand TAM",
+        "market_query_de": f"{base} Markt Nachfrage",
+        "competitor_query_en": f"{sol} competitors alternatives",
+        "competitor_query_de": f"{sol} Wettbewerber Alternativen",
         "sentiment_query": f"{base} discussion reviews frustration",
+        "direct_search": f"{sol} {base}",
         "trend_keywords": [w for w in [sol.split()[0] if sol else "", "b2b", "saas"] if w][:3],
         "reddit_subreddits": list(FALLBACK_SUBREDDITS),
     }
@@ -189,17 +199,28 @@ class ResearchModule:
         if not isinstance(data, dict):
             return self._generate_queries_sync_fallback(summary)
 
-        market = data.get("market_query")
-        competitor = data.get("competitor_query")
+        fb = _fallback_queries(summary)
+
+        market_en = data.get("market_query_en") or data.get("market_query")
+        market_de = data.get("market_query_de")
+        competitor_en = data.get("competitor_query_en") or data.get("competitor_query")
+        competitor_de = data.get("competitor_query_de")
         sentiment = data.get("sentiment_query")
+        direct_search = data.get("direct_search")
         trend_kw = data.get("trend_keywords")
 
-        if not isinstance(market, str) or not market.strip():
-            market = str(_fallback_queries(summary)["market_query"])
-        if not isinstance(competitor, str) or not competitor.strip():
-            competitor = str(_fallback_queries(summary)["competitor_query"])
+        if not isinstance(market_en, str) or not market_en.strip():
+            market_en = str(fb["market_query_en"])
+        if not isinstance(market_de, str) or not market_de.strip():
+            market_de = str(fb["market_query_de"])
+        if not isinstance(competitor_en, str) or not competitor_en.strip():
+            competitor_en = str(fb["competitor_query_en"])
+        if not isinstance(competitor_de, str) or not competitor_de.strip():
+            competitor_de = str(fb["competitor_query_de"])
         if not isinstance(sentiment, str) or not sentiment.strip():
-            sentiment = str(_fallback_queries(summary)["sentiment_query"])
+            sentiment = str(fb["sentiment_query"])
+        if not isinstance(direct_search, str) or not direct_search.strip():
+            direct_search = str(fb["direct_search"])
 
         keywords: list[str]
         if isinstance(trend_kw, list):
@@ -233,9 +254,12 @@ class ResearchModule:
                     break
 
         return {
-            "market_query": market.strip(),
-            "competitor_query": competitor.strip(),
+            "market_query_en": market_en.strip(),
+            "market_query_de": market_de.strip(),
+            "competitor_query_en": competitor_en.strip(),
+            "competitor_query_de": competitor_de.strip(),
             "sentiment_query": sentiment.strip(),
+            "direct_search": direct_search.strip(),
             "trend_keywords": keywords[:3],
             "reddit_subreddits": subreddits,
         }
@@ -435,9 +459,12 @@ class ResearchModule:
             logger.exception("Unexpected error in _generate_queries")
             queries = self._generate_queries_sync_fallback(summary)
 
-        market_q = str(queries["market_query"])
-        competitor_q = str(queries["competitor_query"])
+        market_q_en = str(queries["market_query_en"])
+        market_q_de = str(queries["market_query_de"])
+        competitor_q_en = str(queries["competitor_query_en"])
+        competitor_q_de = str(queries["competitor_query_de"])
         sentiment_q = str(queries["sentiment_query"])
+        direct_q = str(queries["direct_search"])
         trend_keywords = queries["trend_keywords"]
         if isinstance(trend_keywords, str):
             trend_kw_list = [trend_keywords]
@@ -448,51 +475,71 @@ class ResearchModule:
         reddit_subs: list[str] = list(raw_subs) if isinstance(raw_subs, list) else list(FALLBACK_SUBREDDITS)
 
         logger.info(
-            "Research run idea_id=%s market_q=%r competitor_q=%r sentiment_q=%r keywords=%s subreddits=%s",
+            "Research run idea_id=%s market_en=%r market_de=%r competitor_en=%r "
+            "direct=%r keywords=%s subreddits=%s",
             idea_id,
-            market_q,
-            competitor_q,
-            sentiment_q,
+            market_q_en,
+            market_q_de,
+            competitor_q_en,
+            direct_q,
             trend_kw_list,
             reddit_subs,
         )
 
-        # --- Phase 1a: market ---
+        # --- Phase 1a: market (EN + DE parallel) ---
         await self._notify(progress, "market_search")
         phase1_market = await asyncio.gather(
             self._cached_search(
                 "searxng_market_general",
-                market_q,
-                self._searxng.search(market_q, categories="general", language="en"),
+                market_q_en,
+                self._searxng.search(market_q_en, categories="general", language="en"),
+                idea_id,
+            ),
+            self._cached_search(
+                "searxng_market_de",
+                market_q_de,
+                self._searxng.search(market_q_de, categories="general", language="de"),
                 idea_id,
             ),
             self._cached_search(
                 "searxng_market_news",
-                market_q,
-                self._searxng.search(market_q, categories="news", language="en"),
+                market_q_en,
+                self._searxng.search(market_q_en, categories="news", language="en"),
                 idea_id,
             ),
             self._cached_search(
                 "searxng_academic",
-                market_q,
-                self._searxng.search(market_q, categories="science", language="en"),
+                market_q_en,
+                self._searxng.search(market_q_en, categories="science", language="en"),
                 idea_id,
             ),
         )
 
-        # --- Phase 1b: competitors ---
+        # --- Phase 1b: competitors (EN + DE) + direct search ---
         await self._notify(progress, "competitor_search")
         phase1_comp = await asyncio.gather(
             self._cached_search(
                 "github",
-                competitor_q,
-                self._github.search_repos(competitor_q),
+                competitor_q_en,
+                self._github.search_repos(competitor_q_en),
                 idea_id,
             ),
             self._cached_search(
                 "producthunt",
-                competitor_q,
-                self._producthunt.search(competitor_q),
+                competitor_q_en,
+                self._producthunt.search(competitor_q_en),
+                idea_id,
+            ),
+            self._cached_search(
+                "searxng_competitor_de",
+                competitor_q_de,
+                self._searxng.search(competitor_q_de, categories="general", language="de"),
+                idea_id,
+            ),
+            self._cached_search(
+                "searxng_direct",
+                direct_q,
+                self._searxng.search(direct_q, categories="general", language="en", max_results=15),
                 idea_id,
             ),
         )

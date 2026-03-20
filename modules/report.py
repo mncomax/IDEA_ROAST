@@ -194,9 +194,13 @@ class ReportModule:
             else:
                 parts.append("(keine)")
 
-        next_step = (analysis.next_step or "").strip()
-        parts.extend(["", "➡️ Nächster Schritt"])
-        parts.append(next_step if next_step else "(nicht gesetzt)")
+        next_steps = analysis.next_steps or []
+        parts.extend(["", "➡️ Nächste Schritte"])
+        if next_steps:
+            for i, step in enumerate(next_steps, 1):
+                parts.append(f"{i}. {step.strip()}")
+        else:
+            parts.append("(nicht gesetzt)")
 
         parts.extend(["", "—", f"Idee: {(summary.problem_statement or '').strip()[:200]}"])
 
@@ -393,7 +397,8 @@ class ReportModule:
                 "",
                 f"**Begründung:** {(analysis.recommendation_reasoning or '_—_').strip()}",
                 "",
-                f"**Nächster Schritt:** {(analysis.next_step or '_—_').strip()}",
+                "**Nächste Schritte:**",
+                *[f"- {s.strip()}" for s in (analysis.next_steps or ["_—_"])],
                 "",
             ]
         )

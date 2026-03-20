@@ -30,7 +30,20 @@ konkrete Recherche-Fundstellen (keine erfundenen Zahlen oder Fakten)
 Zusaetzlich (Gesamturteil):
 - recommendation: genau einer von: go, conditional_go, pivot, no_go
 - recommendation_reasoning: knappe Begruendung auf Deutsch
-- next_step: EIN konkreter, umsetzbarer naechster Schritt (Deutsch)
+- next_steps: ein Array mit 2-3 konkreten, umsetzbaren naechsten Schritten (Deutsch). \
+WICHTIG: Sei kreativ und spezifisch. NICHT immer "Interviews fuehren" oder \
+"Nutzer befragen" empfehlen. Stattdessen z.B.:
+  * Landing Page mit Waitlist bauen und Ads schalten
+  * Einen konkreten Prototyp/MVP in einer Woche bauen
+  * In einer spezifischen Community posten und Reaktionen messen
+  * Einen Wettbewerber als Kunde testen und Pain Points dokumentieren
+  * Eine Preistabelle erstellen und 10 Leuten zeigen
+  * Konkrete Partnerschaften/Kanaele recherchieren und kontaktieren
+  * Einen Smoke Test mit echtem Preispunkt aufsetzen
+  * Einen Tag lang den Prozess manuell durchfuehren (Concierge MVP)
+  * Daten zu einem spezifischen Aspekt tiefer recherchieren
+Die Schritte muessen spezifisch fuer DIESE Idee sein und den Gruender wirklich \
+weiterbringen.
 
 KRITISCHE REGEL:
 ERFINDE NIEMALS Fakten, Studien, Marktzahlen oder Quellen. Wenn die \
@@ -50,7 +63,7 @@ Exakte Struktur:
   ],
   "recommendation": "conditional_go",
   "recommendation_reasoning": "...",
-  "next_step": "..."
+  "next_steps": ["Schritt 1...", "Schritt 2...", "Schritt 3..."]
 }
 
 Das Array scores muss genau 7 Eintraege enthalten — eine Zeile pro Kategorie \

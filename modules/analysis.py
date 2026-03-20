@@ -248,12 +248,18 @@ class AnalysisModule:
 
         rec = self._parse_recommendation(data.get("recommendation"))
         rec_reas = str(data.get("recommendation_reasoning") or "").strip()
-        next_step = str(data.get("next_step") or "").strip()
         if not rec_reas:
             rec_reas = "Keine gesonderte Empfehlungsbegruendung geliefert."
-        if not next_step:
-            next_step = "Konkreten naechsten Validierungsschritt mit Team festlegen und Rechercheluecken schliessen."
-        return scores, rec, rec_reas, next_step
+
+        raw_steps = data.get("next_steps") or data.get("next_step")
+        next_steps: list[str]
+        if isinstance(raw_steps, list):
+            next_steps = [str(s).strip() for s in raw_steps if str(s).strip()]
+        elif isinstance(raw_steps, str) and raw_steps.strip():
+            next_steps = [raw_steps.strip()]
+        else:
+            next_steps = ["Konkreten naechsten Validierungsschritt festlegen und Rechercheluecken schliessen."]
+        return scores, rec, rec_reas, next_steps
 
     def _parse_devils_payload(self, data: object) -> DevilsAdvocateResult:
         if not isinstance(data, dict):
@@ -345,10 +351,10 @@ class AnalysisModule:
         scores: list[CategoryScore]
         rec: Recommendation
         rec_reas: str
-        next_step: str
+        next_steps: list[str]
 
         try:
-            scores, rec, rec_reas, next_step = await self._run_scoring(idea_block, research_ctx)
+            scores, rec, rec_reas, next_steps = await self._run_scoring(idea_block, research_ctx)
         except asyncio.CancelledError:
             raise
         except (LLMError, LLMResponseParsingError) as exc:
@@ -359,7 +365,7 @@ class AnalysisModule:
                 "Die automatische Bewertung konnte nicht abgeschlossen werden. "
                 "Bitte erneut versuchen, wenn die API wieder verfuegbar ist."
             )
-            next_step = "Analyse nach einem kurzen Warten wiederholen; bei anhaltendem Fehler Logs pruefen."
+            next_steps = ["Analyse nach einem kurzen Warten wiederholen; bei anhaltendem Fehler Logs pruefen."]
         except Exception:
             logger.exception("Analysis scoring failed idea_id=%s", idea_id)
             scores = self._default_insufficient_scores()
@@ -367,7 +373,7 @@ class AnalysisModule:
             rec_reas = (
                 "Die automatische Bewertung konnte nicht abgeschlossen werden (unerwarteter Fehler)."
             )
-            next_step = "Analyse erneut starten und technische Konfiguration pruefen."
+            next_steps = ["Analyse erneut starten und technische Konfiguration pruefen."]
 
         await self._notify(progress, "devils_advocate")
         scores_ctx = self._build_scores_context(scores)
@@ -403,7 +409,7 @@ class AnalysisModule:
             scores=scores,
             recommendation=rec,
             recommendation_reasoning=rec_reas,
-            next_step=next_step,
+            next_steps=next_steps,
             out_of_box_ideas=oob,
             devils_advocate=devils,
         )

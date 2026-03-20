@@ -242,7 +242,7 @@ async def _process_brainstorm_input(update: Update, context: ContextTypes.DEFAUL
             conv_ctx.brainstorm_state = BrainstormState.DONE
             return ConversationHandler.END
         elif lower in ("nein", "no", "ne", "nee", "nicht", "nope"):
-            conv_ctx.brainstorm_state = BrainstormState.IN_PROGRESS
+            conv_ctx.brainstorm_state = BrainstormState.CONVERSING
             await update.message.reply_text(
                 "Okay, was soll ich aendern? Beschreib kurz was anders ist, "
                 "dann passe ich die Zusammenfassung an."
@@ -301,7 +301,17 @@ async def dispatch_transcribed_text(update: Update, context: ContextTypes.DEFAUL
     so that voice messages work as a direct idea input.
     """
     conv_ctx: Optional[ConversationContext] = context.user_data.get("conv_context")
-    if conv_ctx and conv_ctx.brainstorm_state not in (BrainstormState.DONE, BrainstormState.AWAITING_IDEA):
+    active_states = (
+        BrainstormState.AWAITING_IDEA,
+        BrainstormState.CONVERSING,
+        BrainstormState.ASKING_PERSONA,
+        BrainstormState.ASKING_CURRENT_SOLUTION,
+        BrainstormState.ASKING_SWITCH_TRIGGER,
+        BrainstormState.ASKING_MONETIZATION,
+        BrainstormState.ASKING_DISTRIBUTION,
+        BrainstormState.AWAITING_CONFIRMATION,
+    )
+    if conv_ctx and conv_ctx.brainstorm_state in active_states:
         await _process_brainstorm_input(update, context, text)
     else:
         chat_id = update.effective_chat.id

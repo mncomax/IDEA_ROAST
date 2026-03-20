@@ -20,6 +20,7 @@ from typing import Optional
 class BrainstormState(str, Enum):
     """Conversation state during brainstorm flow."""
     AWAITING_IDEA = "awaiting_idea"
+    CONVERSING = "conversing"
     ASKING_PERSONA = "asking_persona"
     ASKING_CURRENT_SOLUTION = "asking_current_solution"
     ASKING_SWITCH_TRIGGER = "asking_switch_trigger"
@@ -113,13 +114,15 @@ class CitedStatement:
 
 @dataclass
 class BrainstormAnswers:
-    """Collected answers from the sokratische Fragen."""
+    """Collected answers from the brainstorm conversation."""
     raw_idea: str = ""
     persona: str = ""
     current_solution: str = ""
     switch_trigger: str = ""
     monetization: str = ""
     distribution: str = ""
+    conversation_log: list[tuple[str, str]] = field(default_factory=list)
+    exchange_count: int = 0
 
 
 @dataclass
@@ -207,7 +210,7 @@ class AnalysisResult:
     scores: list[CategoryScore] = field(default_factory=list)
     recommendation: Recommendation = Recommendation.NO_GO
     recommendation_reasoning: str = ""
-    next_step: str = ""
+    next_steps: list[str] = field(default_factory=list)
     out_of_box_ideas: list[OutOfBoxIdea] = field(default_factory=list)
     devils_advocate: DevilsAdvocateResult = field(default=None)  # type: ignore[assignment]
 

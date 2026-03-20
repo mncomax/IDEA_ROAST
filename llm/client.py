@@ -28,9 +28,9 @@ TASK_ROUTING: dict[str, tuple[LLMProvider, str]] = {
     "analysis":           (LLMProvider.ANTHROPIC, "claude-sonnet-4-20250514"),
     "out_of_box":         (LLMProvider.ANTHROPIC, "claude-sonnet-4-20250514"),
 
-    # --- Cost-efficient (GPT) ---
-    "brainstorm":         (LLMProvider.OPENAI, "gpt-4o-mini"),
-    "summarize":          (LLMProvider.OPENAI, "gpt-4o-mini"),
+    # --- Quality (Claude) for user-facing conversation ---
+    "brainstorm":         (LLMProvider.ANTHROPIC, "claude-sonnet-4-20250514"),
+    "summarize":          (LLMProvider.ANTHROPIC, "claude-sonnet-4-20250514"),
     "report_format":      (LLMProvider.OPENAI, "gpt-4o-mini"),
     "source_query":       (LLMProvider.OPENAI, "gpt-4o-mini"),
     "research_extract":   (LLMProvider.OPENAI, "gpt-4o-mini"),

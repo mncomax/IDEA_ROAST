@@ -83,7 +83,7 @@ def build_validation_snapshot_dict(analysis: AnalysisResult) -> dict[str, Any]:
     return {
         "recommendation": analysis.recommendation.value,
         "recommendation_reasoning": (analysis.recommendation_reasoning or "").strip(),
-        "next_step": (analysis.next_step or "").strip(),
+        "next_steps": [s.strip() for s in (analysis.next_steps or [])],
         "scores": [
             {
                 "category": s.category,
@@ -166,10 +166,14 @@ def _format_snapshot_for_detail(snap: dict[str, Any] | None) -> list[str]:
             sem = _SCORE_LEVEL_EMOJI.get(lv, "⚪")
             rs = (str(item.get("reasoning") or "")).strip().replace("\n", " ")
             lines.append(f"{sem} {cat_label}: {rs}")
-    ns = (snap.get("next_step") or "").strip()
-    if ns:
+    raw_ns = snap.get("next_steps") or snap.get("next_step") or []
+    if isinstance(raw_ns, str) and raw_ns.strip():
+        raw_ns = [raw_ns]
+    if raw_ns:
         lines.append("")
-        lines.append(f"Nächster Schritt: {ns}")
+        lines.append("Nächste Schritte:")
+        for i, step in enumerate(raw_ns, 1):
+            lines.append(f"  {i}. {str(step).strip()}")
     return lines
 
 
