@@ -35,6 +35,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.message or not update.message.voice:
         return
 
+    await update.message.reply_text("🎙️ Verarbeite Sprachnachricht...")
+
     try:
         tg_file = await update.message.voice.get_file()
         ogg_buf = await tg_file.download_as_bytearray()
@@ -79,6 +81,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    await update.message.reply_text(f"🎤 Verstanden: {stripped[:100]}...")
+    preview = stripped if len(stripped) <= 200 else stripped[:200] + "..."
+    await update.message.reply_text(f"🎤 Verstanden: {preview}")
 
     await dispatch_transcribed_text(update, context, stripped)

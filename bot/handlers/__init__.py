@@ -295,12 +295,23 @@ async def handle_text_content(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def dispatch_transcribed_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
-    """Route voice transcription based on conversation state."""
+    """Route voice transcription based on conversation state.
+
+    If no brainstorm is active, auto-start one with the transcribed text
+    so that voice messages work as a direct idea input.
+    """
     conv_ctx: Optional[ConversationContext] = context.user_data.get("conv_context")
     if conv_ctx and conv_ctx.brainstorm_state not in (BrainstormState.DONE, BrainstormState.AWAITING_IDEA):
         await _process_brainstorm_input(update, context, text)
     else:
-        await handle_text_content(update, context, text)
+        chat_id = update.effective_chat.id
+        conv_ctx = ConversationContext(
+            telegram_chat_id=chat_id,
+            brainstorm_state=BrainstormState.AWAITING_IDEA,
+            brainstorm_answers=BrainstormAnswers(),
+        )
+        context.user_data["conv_context"] = conv_ctx
+        await _process_brainstorm_input(update, context, text)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
