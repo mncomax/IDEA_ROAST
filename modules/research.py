@@ -65,6 +65,7 @@ def _display_name_for_tool(tool_name: str) -> str:
         "searxng_fallback": "SearXNG (Fallback)",
         "reddit": "Reddit (Subreddits)",
         "reddit_global": "Reddit (Global)",
+        "reddit_searxng": "Reddit (via SearXNG)",
         "hackernews": "Hacker News",
         "hackernews_comments": "Hacker News (Kommentare)",
         "github": "GitHub",
@@ -501,20 +502,34 @@ class ResearchModule:
         # --- Phase 2: sentiment ---
         subs_display = ", ".join(f"r/{s}" for s in reddit_subs[:6])
         if progress:
-            await progress(f"Durchsuche Reddit ({subs_display}) + global...")
-        phase2 = await asyncio.gather(
-            self._cached_search(
-                "reddit",
-                sentiment_q,
+            await progress(f"Durchsuche Reddit ({subs_display}), HN, Diskussionen...")
+
+        reddit_has_credentials = self._reddit._credentials_ok() if hasattr(self._reddit, '_credentials_ok') else False
+
+        reddit_tasks = []
+        if reddit_has_credentials:
+            reddit_tasks.append(self._cached_search(
+                "reddit", sentiment_q,
                 self._reddit.search(sentiment_q, subreddits=reddit_subs),
                 idea_id,
-            ),
-            self._cached_search(
-                "reddit_global",
-                sentiment_q,
+            ))
+            reddit_tasks.append(self._cached_search(
+                "reddit_global", sentiment_q,
                 self._reddit.search(sentiment_q, subreddits=None),
                 idea_id,
-            ),
+            ))
+        else:
+            reddit_tasks.append(self._cached_search(
+                "reddit_searxng", sentiment_q,
+                self._searxng.search(
+                    f"site:reddit.com {sentiment_q}",
+                    categories="general", language="en", max_results=20,
+                ),
+                idea_id,
+            ))
+
+        phase2 = await asyncio.gather(
+            *reddit_tasks,
             self._cached_search(
                 "hackernews",
                 sentiment_q,

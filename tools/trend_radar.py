@@ -34,20 +34,26 @@ GITHUB_SEARCH = "https://api.github.com/search/repositories"
 PULLPUSH_SUBMISSION = "https://api.pullpush.io/reddit/search/submission"
 DEFAULT_HTTP_TIMEOUT = ClientTimeout(total=45)
 
+WIKIPEDIA_PAGEVIEWS = "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article"
+
 _SIGNAL_COLORS: dict[str, str] = {
     "google_trends": "#1f77b4",
+    "wikipedia": "#e377c2",
     "reddit": "#ff7f0e",
     "hackernews": "#2ca02c",
     "news": "#d62728",
     "github": "#9467bd",
+    "youtube": "#ff0000",
 }
 
 _SOURCE_LABELS: dict[str, str] = {
     "google_trends": "Google Trends",
-    "reddit": "Reddit",
+    "wikipedia": "Wikipedia",
+    "reddit": "Reddit (SearXNG)",
     "hackernews": "Hacker News",
     "news": "News (SearXNG)",
     "github": "GitHub",
+    "youtube": "YouTube (SearXNG)",
 }
 
 
@@ -133,13 +139,15 @@ class TrendRadar:
         period_meta = _utc_quarters_back(n)
         canonical_periods = [p[0] for p in period_meta]
 
-        source_order = ["google_trends", "reddit", "hackernews", "news", "github"]
+        source_order = ["google_trends", "wikipedia", "reddit", "hackernews", "news", "github", "youtube"]
         results = await asyncio.gather(
             self._google_trends_signal(kw_clean, n),
+            self._wikipedia_signal(kw_clean, period_meta),
             self._reddit_signal(query, period_meta),
             self._hackernews_signal(query, period_meta),
             self._news_signal(query, period_meta),
             self._github_signal(query, period_meta),
+            self._youtube_signal(query, period_meta),
             return_exceptions=True,
         )
         signals: list[TrendSignal] = []
@@ -236,75 +244,86 @@ class TrendRadar:
         canonical = [p[0] for p in period_meta]
 
         def _run_pytrends() -> TrendSignal:
-            try:
-                from pytrends.request import TrendReq
+            import time as _time
 
-                req = TrendReq(hl="en-US", tz=0)
-                kw = keywords[:5]
-                req.build_payload(kw, timeframe="today 24-m")
-                iot = req.interest_over_time()
-                if iot is None or iot.empty:
-                    return TrendSignal(
-                        source="google_trends",
-                        periods=canonical,
-                        values=[0.0] * len(canonical),
-                        available=False,
-                        error_message="Keine Google-Trends-Zeitreihe",
-                    )
-                value_cols = [c for c in iot.columns if c not in ("isPartial",)]
-                if not value_cols:
-                    return TrendSignal(
-                        source="google_trends",
-                        periods=canonical,
-                        values=[0.0] * len(canonical),
-                        available=False,
-                        error_message="Keine Trend-Spalten",
-                    )
-                series = iot[value_cols[0]].astype(float)
-                if len(value_cols) > 1:
-                    series = iot[value_cols].mean(axis=1)
+            last_err = ""
+            for attempt in range(3):
+                if attempt > 0:
+                    _time.sleep(2 ** attempt)
+                try:
+                    return self._pytrends_attempt(keywords, canonical)
+                except Exception as exc:
+                    last_err = str(exc)[:500]
+                    logger.warning("Google Trends attempt %d/3 failed: %s", attempt + 1, last_err)
 
-                idx = iot.index
-                if idx.tz is None:
-                    idx = idx.tz_localize("UTC")
-                else:
-                    idx = idx.tz_convert("UTC")
-
-                quarter_sums: dict[str, list[float]] = {p: [] for p in canonical}
-                for ts, val in zip(idx, series):
-                    label = f"{ts.year}-Q{(ts.month - 1) // 3 + 1}"
-                    if label in quarter_sums:
-                        quarter_sums[label].append(float(val))
-
-                raw_vals = []
-                for p in canonical:
-                    bucket = quarter_sums.get(p, [])
-                    raw_vals.append(sum(bucket) / len(bucket) if bucket else 0.0)
-
-                mx = max(raw_vals) if raw_vals else 0.0
-                if mx <= 0:
-                    norm = [0.0 for _ in raw_vals]
-                else:
-                    norm = [(v / mx) * 100.0 for v in raw_vals]
-
-                return TrendSignal(
-                    source="google_trends",
-                    periods=canonical,
-                    values=norm,
-                    available=True,
-                    error_message="",
-                )
-            except Exception as exc:
-                logger.warning("Google Trends fehlgeschlagen: %s", exc)
-                return TrendSignal(
-                    source="google_trends",
-                    periods=canonical,
-                    values=[0.0] * len(canonical),
-                    available=False,
-                    error_message=str(exc)[:500],
-                )
+            return TrendSignal(
+                source="google_trends",
+                periods=canonical,
+                values=[0.0] * len(canonical),
+                available=False,
+                error_message=f"3 Versuche fehlgeschlagen: {last_err}",
+            )
 
         return await asyncio.to_thread(_run_pytrends)
+
+    def _pytrends_attempt(self, keywords: list[str], canonical: list[str]) -> TrendSignal:
+        from pytrends.request import TrendReq
+
+        req = TrendReq(hl="en-US", tz=0, retries=2, backoff_factor=1.0)
+        kw = keywords[:5]
+        req.build_payload(kw, timeframe="today 24-m")
+        iot = req.interest_over_time()
+        if iot is None or iot.empty:
+            return TrendSignal(
+                source="google_trends",
+                periods=canonical,
+                values=[0.0] * len(canonical),
+                available=False,
+                error_message="Keine Google-Trends-Zeitreihe",
+            )
+        value_cols = [c for c in iot.columns if c not in ("isPartial",)]
+        if not value_cols:
+            return TrendSignal(
+                source="google_trends",
+                periods=canonical,
+                values=[0.0] * len(canonical),
+                available=False,
+                error_message="Keine Trend-Spalten",
+            )
+        series = iot[value_cols[0]].astype(float)
+        if len(value_cols) > 1:
+            series = iot[value_cols].mean(axis=1)
+
+        idx = iot.index
+        if idx.tz is None:
+            idx = idx.tz_localize("UTC")
+        else:
+            idx = idx.tz_convert("UTC")
+
+        quarter_sums: dict[str, list[float]] = {p: [] for p in canonical}
+        for ts, val in zip(idx, series):
+            label = f"{ts.year}-Q{(ts.month - 1) // 3 + 1}"
+            if label in quarter_sums:
+                quarter_sums[label].append(float(val))
+
+        raw_vals = []
+        for p in canonical:
+            bucket = quarter_sums.get(p, [])
+            raw_vals.append(sum(bucket) / len(bucket) if bucket else 0.0)
+
+        mx = max(raw_vals) if raw_vals else 0.0
+        if mx <= 0:
+            norm = [0.0 for _ in raw_vals]
+        else:
+            norm = [(v / mx) * 100.0 for v in raw_vals]
+
+        return TrendSignal(
+            source="google_trends",
+            periods=canonical,
+            values=norm,
+            available=True,
+            error_message="",
+        )
 
     async def _estimate_signal_from_counts(
         self,
@@ -339,54 +358,162 @@ class TrendRadar:
         query: str,
         period_meta: list[tuple[str, datetime, datetime]],
     ) -> TrendSignal:
+        """Reddit signal via SearXNG (site:reddit.com) — no API key needed."""
         canonical = [p[0] for p in period_meta]
         counts: dict[str, int] = {label: 0 for label, _, _ in period_meta}
         try:
             session = await self._get_http()
-            for label, start, end in period_meta:
-                after = int(start.timestamp())
-                before = int(end.timestamp())
-                params: dict[str, str | int] = {"q": query, "after": after, "before": before, "size": 100}
-                page_total = 0
-                for _page in range(15):
-                    async with session.get(PULLPUSH_SUBMISSION, params=params) as resp:
-                        if resp.status != 200:
+            from urllib.parse import urlencode
+
+            searx_q = f"site:reddit.com {query}"
+            for pageno in range(1, 4):
+                params = urlencode({
+                    "q": searx_q, "format": "json", "categories": "general",
+                    "language": "en", "pageno": str(pageno),
+                })
+                url = f"{self._searxng_base}/search?{params}"
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        break
+                    data: Any = await resp.json()
+                results_raw = data.get("results") if isinstance(data, dict) else None
+                if not isinstance(results_raw, list) or not results_raw:
+                    break
+                for hit in results_raw:
+                    if not isinstance(hit, dict):
+                        continue
+                    pub = hit.get("publishedDate") or hit.get("pubdate")
+                    dt = _parse_pub_date(pub)
+                    if dt is None:
+                        continue
+                    for label, start, end in period_meta:
+                        if start <= dt < end:
+                            counts[label] += 1
                             break
-                        data: Any = await resp.json()
-                    posts = data.get("data") if isinstance(data, dict) else None
-                    if not isinstance(posts, list):
-                        break
-                    page_total += len(posts)
-                    if len(posts) < 100:
-                        break
-                    last = posts[-1]
-                    if isinstance(last, dict) and last.get("created_utc"):
-                        next_after = int(last["created_utc"])
-                        if next_after <= after:
-                            break
-                        params["after"] = next_after
-                    else:
-                        break
-                counts[label] = page_total
         except Exception as exc:
-            logger.warning("Reddit (PullPush) fehlgeschlagen: %s", exc)
+            logger.warning("Reddit (SearXNG) fehlgeschlagen: %s", exc)
             return TrendSignal(
-                source="reddit",
-                periods=canonical,
-                values=[0.0] * len(canonical),
-                available=False,
+                source="reddit", periods=canonical,
+                values=[0.0] * len(canonical), available=False,
                 error_message=str(exc)[:500],
             )
 
         if sum(counts.values()) == 0:
             return TrendSignal(
-                source="reddit",
-                periods=canonical,
-                values=[0.0] * len(canonical),
-                available=False,
-                error_message="Keine Reddit-Treffer (PullPush)",
+                source="reddit", periods=canonical,
+                values=[0.0] * len(canonical), available=False,
+                error_message="Keine Reddit-Treffer via SearXNG",
             )
         return await self._estimate_signal_from_counts("reddit", counts)
+
+    async def _wikipedia_signal(
+        self,
+        keywords: list[str],
+        period_meta: list[tuple[str, datetime, datetime]],
+    ) -> TrendSignal:
+        """Wikipedia Pageviews API — free, reliable, measures real search interest."""
+        canonical = [p[0] for p in period_meta]
+        counts: dict[str, int] = {label: 0 for label, _, _ in period_meta}
+        session = await self._get_http()
+        headers = {"User-Agent": "IdeaRoast-TrendRadar/1.0 (contact: bot@idearoast.dev)"}
+
+        for kw in keywords[:3]:
+            title = kw.strip().replace(" ", "_")
+            if not title:
+                continue
+            start_dt = period_meta[0][1]
+            end_dt = period_meta[-1][2] - timedelta(days=1)
+            start_str = start_dt.strftime("%Y%m%d")
+            end_str = end_dt.strftime("%Y%m%d")
+            url = (
+                f"{WIKIPEDIA_PAGEVIEWS}/en.wikipedia/all-access/all-agents"
+                f"/{title}/monthly/{start_str}/{end_str}"
+            )
+            try:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        continue
+                    data: Any = await resp.json()
+                items = data.get("items") if isinstance(data, dict) else None
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    ts_str = item.get("timestamp", "")
+                    views = item.get("views", 0)
+                    if not ts_str or not isinstance(views, (int, float)):
+                        continue
+                    try:
+                        dt = datetime.strptime(str(ts_str)[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
+                    except ValueError:
+                        continue
+                    for label, start, end in period_meta:
+                        if start <= dt < end:
+                            counts[label] += int(views)
+                            break
+            except Exception as exc:
+                logger.debug("Wikipedia pageviews for %r failed: %s", title, exc)
+
+        if sum(counts.values()) == 0:
+            return TrendSignal(
+                source="wikipedia", periods=canonical,
+                values=[0.0] * len(canonical), available=False,
+                error_message="Keine Wikipedia-Pageviews gefunden",
+            )
+        return await self._estimate_signal_from_counts("wikipedia", counts)
+
+    async def _youtube_signal(
+        self,
+        query: str,
+        period_meta: list[tuple[str, datetime, datetime]],
+    ) -> TrendSignal:
+        """YouTube video count via SearXNG — measures content creation interest."""
+        canonical = [p[0] for p in period_meta]
+        counts: dict[str, int] = {label: 0 for label, _, _ in period_meta}
+        try:
+            session = await self._get_http()
+            from urllib.parse import urlencode
+
+            for pageno in range(1, 3):
+                params = urlencode({
+                    "q": query, "format": "json", "categories": "videos",
+                    "language": "en", "pageno": str(pageno),
+                })
+                url = f"{self._searxng_base}/search?{params}"
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        break
+                    data: Any = await resp.json()
+                results_raw = data.get("results") if isinstance(data, dict) else None
+                if not isinstance(results_raw, list) or not results_raw:
+                    break
+                for hit in results_raw:
+                    if not isinstance(hit, dict):
+                        continue
+                    pub = hit.get("publishedDate") or hit.get("pubdate")
+                    dt = _parse_pub_date(pub)
+                    if dt is None:
+                        continue
+                    for label, start, end in period_meta:
+                        if start <= dt < end:
+                            counts[label] += 1
+                            break
+        except Exception as exc:
+            logger.warning("YouTube (SearXNG) fehlgeschlagen: %s", exc)
+            return TrendSignal(
+                source="youtube", periods=canonical,
+                values=[0.0] * len(canonical), available=False,
+                error_message=str(exc)[:500],
+            )
+
+        if sum(counts.values()) == 0:
+            return TrendSignal(
+                source="youtube", periods=canonical,
+                values=[0.0] * len(canonical), available=False,
+                error_message="Keine YouTube-Videos via SearXNG",
+            )
+        return await self._estimate_signal_from_counts("youtube", counts)
 
     async def _hackernews_signal(
         self,

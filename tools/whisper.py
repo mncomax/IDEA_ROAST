@@ -12,7 +12,7 @@ from aiohttp import ClientTimeout
 
 from shared.exceptions import VoiceTranscriptionError
 
-DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small"
+DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-medium"
 TRANSCRIPTIONS_PATH = "/v1/audio/transcriptions"
 
 
